@@ -56,13 +56,6 @@
             
             <!-- Section Tableau de bord -->
             <section id="dashboard" class="app-section">
-                <div class="recent-missions">
-                    <h3>Prochaines missions</h3>
-                    <div id="upcoming-missions" class="missions-list">
-                        <!-- Les missions seront ajoutées dynamiquement -->
-                    </div>
-                </div>
-
                 <!-- Récapitulatif annuel par établissement -->
                 <div class="yearly-summary">
                     <h3>
@@ -74,6 +67,7 @@
                             <button id="yearly-next-year" class="year-nav-btn"><i class="fas fa-chevron-right"></i></button>
                         </div>
                     </h3>
+                    <div id="yearly-incomplete-warning" class="incomplete-warning" style="display: none;"></div>
                     <div class="establishment-summary-container">
                         <div id="establishment-summary-cards">
                             <!-- Les cartes par établissement seront ajoutées dynamiquement -->
@@ -208,7 +202,17 @@
 
             <!-- Section Sauvegarde -->
             <section id="backup" class="app-section">
-                
+
+                <!-- Installation de l'application (PWA) -->
+                <div class="install-section">
+                    <h3><i class="fas fa-mobile-screen-button"></i> Installer l'application</h3>
+                    <p>Ajoutez l'application à votre écran d'accueil pour un accès rapide et un usage hors ligne.</p>
+                    <button class="btn btn-primary" id="install-pwa-btn">
+                        <i class="fas fa-download"></i> Installer l'application
+                    </button>
+                    <p id="install-hint" class="install-hint"></p>
+                </div>
+
                 <!-- Nouvelle section Google Drive -->
                 <div class="drive-sync-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 10px; color: white; margin-bottom: 2rem;">
                     <h3 style="color: white; margin-top: 0;"><i class="fab fa-google-drive"></i> Synchronisation Google Drive</h3>
@@ -461,6 +465,14 @@
                         <small style="color: #6c757d; font-size: 0.8rem; display: block; margin-bottom: 0.75rem;">
                             À renseigner en fin de mois
                         </small>
+                        <small id="real-salary-suggestion" class="real-salary-suggestion" style="display: none;"></small>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" id="mission-skip-real-salary" style="width: auto; margin: 0;">
+                                <span>Ne pas saisir le salaire réel (inclus dans une autre journée)</span>
+                            </label>
+                            <small style="color: #6c757d; font-size: 0.8rem;">Ex : 2 jours payés sur un seul bulletin — laissez ce jour-là vide.</small>
+                        </div>
                         <div class="form-group">
                             <label for="mission-real-gross">Salaire brut réel (€)</label>
                             <input type="number" id="mission-real-gross" step="0.01" placeholder="Optionnel - Ex: 150.75">

@@ -13,7 +13,11 @@ class NurseSalaryApp {
         this.currentSection = 'dashboard';
         this.currentEditingRate = null;
         this.currentEditingMission = null;
-        
+
+        // Événement d'installation PWA différé (capturé via beforeinstallprompt)
+        this.deferredInstallPrompt = null;
+        this.setupInstallPrompt();
+
         // Initialiser l'application
         this.init();
     }
@@ -89,6 +93,69 @@ class NurseSalaryApp {
                 }
             });
         }
+    }
+
+    /**
+     * Capture l'événement d'installation PWA pour pouvoir le déclencher
+     * depuis notre bouton personnalisé (toujours présent dans Sauvegarde).
+     */
+    setupInstallPrompt() {
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Empêcher l'affichage automatique pour le piloter via notre bouton
+            e.preventDefault();
+            this.deferredInstallPrompt = e;
+        });
+
+        window.addEventListener('appinstalled', () => {
+            this.deferredInstallPrompt = null;
+            this.showNotification('Application installée avec succès 🎉', 'success');
+        });
+    }
+
+    /**
+     * Indique si l'app tourne déjà en mode installé (standalone).
+     */
+    isRunningStandalone() {
+        return window.matchMedia('(display-mode: standalone)').matches ||
+               window.navigator.standalone === true;
+    }
+
+    /**
+     * Déclenche l'installation de la PWA, ou affiche les instructions
+     * manuelles si le navigateur ne fournit pas l'invite native (iOS, etc.).
+     */
+    async installPWA() {
+        // Déjà installée
+        if (this.isRunningStandalone()) {
+            this.showNotification('L\'application est déjà installée sur cet appareil.', 'info');
+            return;
+        }
+
+        // Invite native disponible (Chrome/Edge/Android)
+        if (this.deferredInstallPrompt) {
+            this.deferredInstallPrompt.prompt();
+            const choice = await this.deferredInstallPrompt.userChoice;
+            if (choice && choice.outcome === 'accepted') {
+                this.showNotification('Installation en cours...', 'success');
+            }
+            this.deferredInstallPrompt = null;
+            return;
+        }
+
+        // Pas d'invite native : instructions manuelles selon la plateforme
+        const ua = navigator.userAgent || '';
+        const isIOS = /iphone|ipad|ipod/i.test(ua);
+        let message;
+        if (isIOS) {
+            message = '📲 <strong>Sur iPhone/iPad (Safari) :</strong><br>' +
+                      'Touchez le bouton Partager <i class="fas fa-arrow-up-from-bracket"></i> puis ' +
+                      '« Sur l\'écran d\'accueil ».';
+        } else {
+            message = '📲 <strong>Pour installer :</strong><br>' +
+                      'Ouvrez le menu du navigateur (⋮) puis « Installer l\'application » / ' +
+                      '« Ajouter à l\'écran d\'accueil ».';
+        }
+        this.showNotification(message, 'info', 10000);
     }
 
     /**
@@ -183,6 +250,19 @@ class NurseSalaryApp {
             });
         }
 
+        // Case "ne pas saisir le salaire réel"
+        const skipSalaryChk = document.getElementById('mission-skip-real-salary');
+        if (skipSalaryChk) {
+            skipSalaryChk.addEventListener('change', () => {
+                this.applySkipRealSalaryState();
+                // En décochant, reproposer le bouton de reprise si pertinent
+                if (!skipSalaryChk.checked && this.currentEditingMission) {
+                    const mission = this.dataManager.getMissionById(this.currentEditingMission);
+                    if (mission) this.prefillRealSalaryFromSimilar(mission);
+                }
+            });
+        }
+
         // Fermeture des modales en cliquant sur la croix.
         // Pour les modales tarif et mission, la croix sauvegarde automatiquement
         // (comme "Enregistrer") avant de fermer. Si la sauvegarde échoue
@@ -240,6 +320,12 @@ class NurseSalaryApp {
         const resetDataBtn = document.getElementById('reset-data-btn');
         if (resetDataBtn) {
             resetDataBtn.addEventListener('click', () => this.resetData());
+        }
+
+        // Installation de la PWA
+        const installBtn = document.getElementById('install-pwa-btn');
+        if (installBtn) {
+            installBtn.addEventListener('click', () => this.installPWA());
         }
         
         // Google Drive
@@ -592,10 +678,7 @@ class NurseSalaryApp {
         this.autoUpdateMissionStatuses();
         
         const dashboardData = this.salaryManager.getDashboardData();
-        
-        // Afficher les prochaines missions
-        this.displayUpcomingMissions(dashboardData.upcomingMissions);
-        
+
         // Afficher le récapitulatif annuel par établissement
         this.displayYearlyStatsByEstablishment(dashboardData.yearlyStats);
         
@@ -649,6 +732,10 @@ class NurseSalaryApp {
         if (yearElement) {
             yearElement.textContent = yearlyStats.year;
         }
+
+        // Avertir si des missions réalisées de l'année n'ont pas le salaire réel
+        // (brut ET net) renseigné → les totaux "réels" sont alors incomplets/faux.
+        this.displayIncompleteSalaryWarning(yearlyStats.year);
         
         // Afficher les cartes par établissement
         const container = document.getElementById('establishment-summary-cards');
@@ -696,6 +783,40 @@ class NurseSalaryApp {
         this.updateElement('yearly-total-gross', yearlyStats.totals.formattedGross);
         this.updateElement('yearly-total-net', yearlyStats.totals.formattedNet);
         this.updateElement('yearly-total-hourly', yearlyStats.totals.formattedHourly);
+    }
+
+    /**
+     * Affiche un avertissement si des missions réalisées de l'année donnée
+     * n'ont pas leur salaire réel (brut ET net) renseigné. Dans ce cas les
+     * totaux "réels" sont incomplets, donc faux.
+     */
+    displayIncompleteSalaryWarning(year) {
+        const warning = document.getElementById('yearly-incomplete-warning');
+        if (!warning) return;
+
+        const incomplete = this.dataManager.getMissions().filter(mission => {
+            if (mission.status !== 'completed') return false;
+            if (mission.skipRealSalary) return false; // salaire volontairement non saisi
+            if (!this.isPastMonth(mission.date)) return false; // mois courant/futur ignorés
+            const missionYear = new Date(mission.date + 'T00:00:00').getFullYear();
+            if (missionYear !== year) return false;
+            const hasGross = mission.realGrossSalary != null && mission.realGrossSalary !== '';
+            const hasNet = mission.realNetSalary != null && mission.realNetSalary !== '';
+            return !(hasGross && hasNet);
+        });
+
+        if (incomplete.length === 0) {
+            warning.style.display = 'none';
+            warning.innerHTML = '';
+            return;
+        }
+
+        warning.style.display = 'block';
+        warning.innerHTML = `
+            <i class="fas fa-triangle-exclamation"></i>
+            <strong>${incomplete.length} mission(s) réalisée(s)</strong> sans salaire brut/net complet :
+            les totaux réels ci-dessous sont <strong>incomplets</strong>.
+        `;
     }
     
     /**
@@ -1038,11 +1159,29 @@ class NurseSalaryApp {
 
             const missionsHtml = day.missions.map(mission => {
                 const rate = this.dataManager.getRateById(mission.rateId);
+
+                // Coin coloré indiquant l'état du salaire réel — uniquement pour les
+                // missions des MOIS PASSÉS (le mois courant et le futur n'en ont pas).
+                // Vert = brut+net renseignés, Rouge = manquant, Gris = volontairement ignoré.
+                let salaryCorner = '';
+                let cornerTitle = '';
+                if (mission.status !== 'cancelled' && this.isPastMonth(mission.date)) {
+                    if (mission.skipRealSalary) {
+                        salaryCorner = '<span class="salary-corner skipped"></span>';
+                        cornerTitle = ' — Salaire inclus dans une autre journée';
+                    } else {
+                        const salaryDone = mission.realGrossSalary != null && mission.realGrossSalary !== '' &&
+                                           mission.realNetSalary != null && mission.realNetSalary !== '';
+                        salaryCorner = `<span class="salary-corner ${salaryDone ? 'done' : 'missing'}"></span>`;
+                        cornerTitle = salaryDone ? ' — Salaire brut/net renseignés' : ' — Salaire brut/net manquant';
+                    }
+                }
+
                 return `
-                    <div class="mission-item status-${mission.status}" 
+                    <div class="mission-item status-${mission.status}"
                          onclick="event.stopPropagation(); app.viewMissionDetails('${mission.id}')"
-                         title="${rate ? rate.acronym : 'Inconnu'} - ${mission.establishment || ''}">
-                        ${rate ? rate.acronym : '?'}
+                         title="${rate ? rate.acronym : 'Inconnu'} - ${mission.establishment || ''}${cornerTitle}">
+                        ${rate ? rate.acronym : '?'}${salaryCorner}
                     </div>
                 `;
             }).join('');
@@ -1231,6 +1370,13 @@ class NurseSalaryApp {
         form.reset();
         this.currentEditingMission = missionId;
 
+        // Nettoyer la suggestion de salaire réel (sera réaffichée si pertinent)
+        const suggestionEl = document.getElementById('real-salary-suggestion');
+        if (suggestionEl) {
+            suggestionEl.style.display = 'none';
+            suggestionEl.textContent = '';
+        }
+
         // Charger les options de tarifs
         this.loadRateOptions(rateSelect);
         
@@ -1253,8 +1399,16 @@ class NurseSalaryApp {
                 document.getElementById('mission-notes').value = mission.notes || '';
                 document.getElementById('mission-real-gross').value = mission.realGrossSalary || '';
                 document.getElementById('mission-real-net').value = mission.realNetSalary || '';
+                document.getElementById('mission-skip-real-salary').checked = !!mission.skipRealSalary;
                 document.getElementById('mission-start-time').value = mission.startTime || '';
                 document.getElementById('mission-end-time').value = mission.endTime || '';
+
+                // Appliquer l'état désactivé des champs si le salaire est ignoré
+                this.applySkipRealSalaryState();
+
+                // Si le salaire réel est vide, pré-remplir depuis la mission réalisée
+                // du même type la plus proche en date (à vérifier avant d'enregistrer).
+                this.prefillRealSalaryFromSimilar(mission);
                 
                 // Pré-remplir les tarifs estimés (depuis la mission ou depuis le tarif), arrondis à 2 décimales
                 const rate = this.dataManager.getRateById(mission.rateId);
@@ -1342,9 +1496,11 @@ class NurseSalaryApp {
     loadRateOptions(selectElement) {
         if (!selectElement) return;
 
-        const rates = this.dataManager.getRates();
+        const rates = this.dataManager.getRates()
+            .slice()
+            .sort((a, b) => (a.acronym || '').localeCompare(b.acronym || '', 'fr', { sensitivity: 'base' }));
         selectElement.innerHTML = '<option value="">Sélectionner un type</option>';
-        
+
         rates.forEach(rate => {
             const option = document.createElement('option');
             option.value = rate.id;
@@ -1395,6 +1551,7 @@ class NurseSalaryApp {
             estimatedSalary: parseFloat(document.getElementById('mission-estimated-salary').value) || null,
             realGrossSalary: parseFloat(document.getElementById('mission-real-gross').value) || null,
             realNetSalary: parseFloat(document.getElementById('mission-real-net').value) || null,
+            skipRealSalary: document.getElementById('mission-skip-real-salary').checked,
             startTime: document.getElementById('mission-start-time').value || null,
             endTime: document.getElementById('mission-end-time').value || null
         };
@@ -1646,6 +1803,101 @@ class NurseSalaryApp {
         return (Math.round(n * 100) / 100).toFixed(2);
     }
 
+    /**
+     * Indique si une date appartient à un mois antérieur au mois courant.
+     */
+    isPastMonth(dateStr) {
+        const d = new Date(dateStr + 'T00:00:00');
+        const now = new Date();
+        return d.getFullYear() < now.getFullYear() ||
+               (d.getFullYear() === now.getFullYear() && d.getMonth() < now.getMonth());
+    }
+
+    /**
+     * Propose (via un bouton) de reprendre le salaire réel de la mission
+     * réalisée du MÊME type (rateId) la plus proche en date. Les valeurs ne
+     * sont appliquées QUE si l'utilisateur clique sur le bouton (pas d'auto-save).
+     */
+    prefillRealSalaryFromSimilar(mission) {
+        const grossInput = document.getElementById('mission-real-gross');
+        const netInput = document.getElementById('mission-real-net');
+        const suggestionEl = document.getElementById('real-salary-suggestion');
+        if (!grossInput || !netInput || !suggestionEl) return;
+
+        suggestionEl.style.display = 'none';
+        suggestionEl.innerHTML = '';
+
+        // Pas de suggestion si le salaire est ignoré ou déjà renseigné
+        const skip = document.getElementById('mission-skip-real-salary');
+        if (skip && skip.checked) return;
+        if (grossInput.value !== '' || netInput.value !== '') return;
+
+        const refTime = new Date(mission.date + 'T00:00:00').getTime();
+
+        const candidates = this.dataManager.getMissions().filter(m =>
+            m.id !== mission.id &&
+            m.rateId === mission.rateId &&
+            m.status === 'completed' &&
+            !m.skipRealSalary &&
+            m.realGrossSalary != null && m.realGrossSalary !== '' &&
+            m.realNetSalary != null && m.realNetSalary !== ''
+        );
+
+        if (candidates.length === 0) return;
+
+        // La plus proche en date (écart minimal), puis la plus récente en cas d'égalité
+        candidates.sort((a, b) => {
+            const da = Math.abs(new Date(a.date + 'T00:00:00').getTime() - refTime);
+            const db = Math.abs(new Date(b.date + 'T00:00:00').getTime() - refTime);
+            if (da !== db) return da - db;
+            return b.date.localeCompare(a.date);
+        });
+
+        const ref = candidates[0];
+        const gross = this.round2(ref.realGrossSalary);
+        const net = this.round2(ref.realNetSalary);
+        const d = new Date(ref.date + 'T00:00:00').toLocaleDateString('fr-FR');
+
+        suggestionEl.innerHTML = `
+            <button type="button" id="apply-last-salary" class="btn-suggestion">
+                <i class="fas fa-wand-magic-sparkles"></i> Reprendre la dernière : brut ${gross}€ / net ${net}€
+            </button>
+            <span class="suggestion-note">mission du ${d}</span>
+        `;
+        suggestionEl.style.display = 'block';
+
+        const applyBtn = document.getElementById('apply-last-salary');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+                grossInput.value = ref.realGrossSalary;
+                netInput.value = ref.realNetSalary;
+                suggestionEl.style.display = 'none';
+            });
+        }
+    }
+
+    /**
+     * Active/désactive les champs Salaire réel selon la case "ne pas saisir".
+     */
+    applySkipRealSalaryState() {
+        const skip = document.getElementById('mission-skip-real-salary');
+        const grossInput = document.getElementById('mission-real-gross');
+        const netInput = document.getElementById('mission-real-net');
+        const suggestionEl = document.getElementById('real-salary-suggestion');
+        if (!skip || !grossInput || !netInput) return;
+
+        if (skip.checked) {
+            grossInput.value = '';
+            netInput.value = '';
+            grossInput.disabled = true;
+            netInput.disabled = true;
+            if (suggestionEl) { suggestionEl.style.display = 'none'; suggestionEl.innerHTML = ''; }
+        } else {
+            grossInput.disabled = false;
+            netInput.disabled = false;
+        }
+    }
+
     setAccordionOpen(name, open) {
         const accordion = document.querySelector(`#mission-form .accordion[data-accordion="${name}"]`);
         if (accordion) {
@@ -1669,11 +1921,20 @@ class NurseSalaryApp {
         const form = document.getElementById(formId);
         if (!form) return;
 
-        if (typeof form.requestSubmit === 'function') {
-            form.requestSubmit();
+        // Si le formulaire est valide, on enregistre (le handler ferme la modale).
+        // Sinon (ex. nouvelle mission vide), on ferme simplement sans enregistrer
+        // pour que la croix permette toujours de quitter la modale.
+        if (form.checkValidity()) {
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            }
         } else {
-            // Fallback navigateurs anciens
-            form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            const modal = form.closest('.modal');
+            if (modal) {
+                this.closeModal(modal.id);
+            }
         }
     }
 

@@ -7,7 +7,7 @@
  * pour purger l'ancien cache sur les appareils.
  */
 
-const CACHE_NAME = 'nurse-salary-tracker-v1.1.0';
+const CACHE_NAME = 'nurse-salary-tracker-v1.1.1';
 
 const urlsToCache = [
   './',
