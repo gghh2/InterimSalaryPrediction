@@ -378,57 +378,65 @@ class SalaryManager {
         let globalStats = {
             missions: 0,
             hours: 0,
+            hoursForNet: 0,
             grossSalary: 0,
             netSalary: 0
         };
-        
+
         yearMissions.forEach(mission => {
             const rate = rates.find(r => r.id === mission.rateId);
             if (!rate) return;
-            
+
             // Déterminer l'établissement
             const establishment = mission.establishment || rate.establishment || 'Non spécifié';
-            
+
             // Initialiser l'établissement si nécessaire
             if (!statsByEstablishment[establishment]) {
                 statsByEstablishment[establishment] = {
                     name: establishment,
                     missions: 0,
                     hours: 0,
+                    hoursForNet: 0,
                     grossSalary: 0,
                     netSalary: 0
                 };
             }
-            
+
             // Incrémenter le nombre de missions
             statsByEstablishment[establishment].missions++;
             globalStats.missions++;
-            
+
             // Ajouter les heures (seulement si pas exclu du comptage et pas une indemnité)
             if (!rate.excludeFromCount && rate.hours > 0) {
                 statsByEstablishment[establishment].hours += rate.hours;
                 globalStats.hours += rate.hours;
+
+                // Heures servant au calcul du €/h net : uniquement celles dont le net
+                // est réellement pris en compte (net saisi, ou journée groupée/ignorée
+                // dont le net est inclus dans une autre mission déjà comptée).
+                if (mission.realNetSalary || mission.skipRealSalary) {
+                    statsByEstablishment[establishment].hoursForNet += rate.hours;
+                    globalStats.hoursForNet += rate.hours;
+                }
             }
-            
+
             // Ajouter les salaires réels si disponibles
             if (mission.realGrossSalary) {
                 statsByEstablishment[establishment].grossSalary += mission.realGrossSalary;
                 globalStats.grossSalary += mission.realGrossSalary;
             }
-            
+
             if (mission.realNetSalary) {
                 statsByEstablishment[establishment].netSalary += mission.realNetSalary;
                 globalStats.netSalary += mission.realNetSalary;
             }
         });
-        
+
         // Calculer le tarif horaire moyen pour chaque établissement
-        // Tarif horaire = Net réel total / Heures totales travaillées
+        // €/h net = Net réel total / Heures correspondant à ce net
         const establishmentArray = Object.values(statsByEstablishment).map(stats => {
-            // Le tarif horaire moyen est calculé sur TOUTES les heures travaillées
-            // (pas seulement celles avec un salaire réel)
-            const avgHourlyRate = stats.hours > 0 ? stats.netSalary / stats.hours : 0;
-            
+            const avgHourlyRate = stats.hoursForNet > 0 ? stats.netSalary / stats.hoursForNet : 0;
+
             return {
                 ...stats,
                 avgHourlyRate: Math.round(avgHourlyRate * 100) / 100,
@@ -442,8 +450,8 @@ class SalaryManager {
         establishmentArray.sort((a, b) => b.missions - a.missions);
         
         // Calculer le tarif horaire moyen global
-        // Net réel total / Toutes les heures travaillées
-        const globalAvgHourlyRate = globalStats.hours > 0 ? globalStats.netSalary / globalStats.hours : 0;
+        // €/h net = Net réel total / Heures correspondant à ce net
+        const globalAvgHourlyRate = globalStats.hoursForNet > 0 ? globalStats.netSalary / globalStats.hoursForNet : 0;
         
         return {
             year: targetYear,
@@ -486,6 +494,7 @@ class SalaryManager {
         let globalStats = {
             missions: 0,
             hours: 0,
+            hoursForNet: 0,
             estimatedSalary: 0,
             grossSalary: 0,
             netSalary: 0
@@ -504,22 +513,29 @@ class SalaryManager {
                     name: establishment,
                     missions: 0,
                     hours: 0,
+                    hoursForNet: 0,
                     estimatedSalary: 0,
                     grossSalary: 0,
                     netSalary: 0
                 };
             }
-            
+
             // Incrémenter le nombre de missions
             statsByEstablishment[establishment].missions++;
             globalStats.missions++;
-            
+
             // Ajouter les heures (seulement si pas exclu du comptage et pas une indemnité)
             if (!rate.excludeFromCount && rate.hours > 0) {
                 statsByEstablishment[establishment].hours += rate.hours;
                 globalStats.hours += rate.hours;
+
+                // Heures servant au €/h net (net saisi ou journée groupée/ignorée)
+                if (mission.realNetSalary || mission.skipRealSalary) {
+                    statsByEstablishment[establishment].hoursForNet += rate.hours;
+                    globalStats.hoursForNet += rate.hours;
+                }
             }
-            
+
             // Ajouter le salaire estimé
             let estimatedAmount = 0;
             if (rate.salary) {
@@ -544,9 +560,9 @@ class SalaryManager {
         
         // Calculer les statistiques pour chaque établissement
         const establishmentArray = Object.values(statsByEstablishment).map(stats => {
-            // Tarif horaire moyen net réel
-            const avgHourlyRate = stats.hours > 0 ? stats.netSalary / stats.hours : 0;
-            
+            // €/h net = Net réel / Heures correspondant à ce net
+            const avgHourlyRate = stats.hoursForNet > 0 ? stats.netSalary / stats.hoursForNet : 0;
+
             // Écart (net réel - net estimé)
             const difference = stats.netSalary - stats.estimatedSalary;
             
@@ -567,7 +583,7 @@ class SalaryManager {
         establishmentArray.sort((a, b) => b.missions - a.missions);
         
         // Calculer les totaux
-        const globalAvgHourlyRate = globalStats.hours > 0 ? globalStats.netSalary / globalStats.hours : 0;
+        const globalAvgHourlyRate = globalStats.hoursForNet > 0 ? globalStats.netSalary / globalStats.hoursForNet : 0;
         const globalDifference = globalStats.netSalary - globalStats.estimatedSalary;
         
         return {
