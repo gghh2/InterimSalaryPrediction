@@ -512,13 +512,20 @@ class DataManager {
      */
     importAllData(jsonData) {
         try {
-            const data = JSON.parse(jsonData);
-            
+            const parsed = JSON.parse(jsonData);
+
+            // Supporte deux formats :
+            // - v1.0 (plat) : { rates, missions, settings }
+            // - v2.0 (imbriqué, ex. backup Drive/mobile) : { version, data: { rates, missions, settings } }
+            const data = (parsed && parsed.data && typeof parsed.data === 'object')
+                ? parsed.data
+                : parsed;
+
             // Vérification de la structure des données
             if (!data.rates || !Array.isArray(data.rates)) {
                 throw new Error('Format de données invalide: tarifs manquants');
             }
-            
+
             if (!data.missions || !Array.isArray(data.missions)) {
                 throw new Error('Format de données invalide: missions manquantes');
             }

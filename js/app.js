@@ -39,7 +39,7 @@ class NurseSalaryApp {
         // Vérifier et mettre à jour automatiquement les missions confirmées passées
         this.autoUpdateMissionStatuses();
         
-        this.loadDashboard();
+        this.loadPlanning();
         this.showNotification('Application chargée avec succès', 'success');
         
         // Enregistrer le Service Worker pour PWA
@@ -168,11 +168,35 @@ class NurseSalaryApp {
             deleteMissionBtn.addEventListener('click', () => this.handleMissionDelete());
         }
 
-        // Fermeture des modales en cliquant sur la croix seulement
+        // Accordéons de la modale mission (ouverture/fermeture au clic sur l'en-tête)
+        document.querySelectorAll('#mission-form .accordion-header').forEach(header => {
+            header.addEventListener('click', () => {
+                header.closest('.accordion').classList.toggle('open');
+            });
+        });
+
+        // Quand le statut passe à "Réalisée", on déplie automatiquement "Salaire réel"
+        const missionStatusSelect = document.getElementById('mission-status');
+        if (missionStatusSelect) {
+            missionStatusSelect.addEventListener('change', (e) => {
+                this.setAccordionOpen('salaire-reel', e.target.value === 'completed');
+            });
+        }
+
+        // Fermeture des modales en cliquant sur la croix.
+        // Pour les modales tarif et mission, la croix sauvegarde automatiquement
+        // (comme "Enregistrer") avant de fermer. Si la sauvegarde échoue
+        // (validation), la modale reste ouverte avec le message d'erreur.
         document.querySelectorAll('.modal-close').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const modal = e.target.closest('.modal');
-                if (modal) {
+                if (!modal) return;
+
+                if (modal.id === 'mission-modal') {
+                    this.saveAndCloseForm('mission-form');
+                } else if (modal.id === 'rate-modal') {
+                    this.saveAndCloseForm('rate-form');
+                } else {
                     this.closeModal(modal.id);
                 }
             });
@@ -1179,12 +1203,12 @@ class NurseSalaryApp {
                         endTimeInput.value = rate.endTime;
                     }
                     
-                    // Auto-compléter le tarif horaire et le salaire estimé
+                    // Auto-compléter le tarif horaire et le salaire estimé (arrondis à 2 décimales)
                     if (rate.hourlyRate && hourlyRateInput) {
-                        hourlyRateInput.value = rate.hourlyRate;
+                        hourlyRateInput.value = this.round2(rate.hourlyRate);
                     }
                     if (rate.salary && estimatedSalaryInput) {
-                        estimatedSalaryInput.value = rate.salary;
+                        estimatedSalaryInput.value = this.round2(rate.salary);
                     }
                 }
             }
@@ -1232,24 +1256,27 @@ class NurseSalaryApp {
                 document.getElementById('mission-start-time').value = mission.startTime || '';
                 document.getElementById('mission-end-time').value = mission.endTime || '';
                 
-                // Pré-remplir les tarifs estimés (depuis la mission ou depuis le tarif)
+                // Pré-remplir les tarifs estimés (depuis la mission ou depuis le tarif), arrondis à 2 décimales
                 const rate = this.dataManager.getRateById(mission.rateId);
                 if (mission.hourlyRate !== undefined) {
-                    document.getElementById('mission-hourly-rate').value = mission.hourlyRate || '';
+                    document.getElementById('mission-hourly-rate').value = this.round2(mission.hourlyRate);
                 } else if (rate && rate.hourlyRate) {
-                    document.getElementById('mission-hourly-rate').value = rate.hourlyRate;
+                    document.getElementById('mission-hourly-rate').value = this.round2(rate.hourlyRate);
                 }
-                
+
                 if (mission.estimatedSalary !== undefined) {
-                    document.getElementById('mission-estimated-salary').value = mission.estimatedSalary || '';
+                    document.getElementById('mission-estimated-salary').value = this.round2(mission.estimatedSalary);
                 } else if (rate && rate.salary) {
-                    document.getElementById('mission-estimated-salary').value = rate.salary;
+                    document.getElementById('mission-estimated-salary').value = this.round2(rate.salary);
                 }
                 
                 // Afficher le bouton supprimer
                 if (deleteBtn) {
                     deleteBtn.style.display = 'block';
                 }
+
+                // État par défaut des accordéons selon le statut
+                this.applyAccordionDefaults(mission.status);
             }
         } else {
             // Mode création
@@ -1257,14 +1284,33 @@ class NurseSalaryApp {
             if (defaultDate) {
                 document.getElementById('mission-date').value = defaultDate;
             }
-            
+
             // Masquer le bouton supprimer
             if (deleteBtn) {
                 deleteBtn.style.display = 'none';
             }
+
+            // Nouvelle mission : tous les accordéons repliés
+            this.applyAccordionDefaults('planned');
         }
 
         this.showModal('mission-modal');
+
+        // Si la mission est "Planifiée", on descend automatiquement au champ Statut
+        // car le plus souvent on rouvre la mission pour en changer le statut.
+        if (missionId) {
+            const mission = this.dataManager.getMissionById(missionId);
+            if (mission && mission.status === 'planned') {
+                const statusField = document.getElementById('mission-status');
+                if (statusField) {
+                    // Petit délai pour laisser la modale s'afficher avant de défiler
+                    setTimeout(() => {
+                        statusField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        statusField.focus();
+                    }, 150);
+                }
+            }
+        }
     }
 
     /**
@@ -1449,7 +1495,7 @@ class NurseSalaryApp {
             // Générer le fichier ICS (uniquement missions futures par défaut)
             const icsResult = this.salaryManager.generateICSFile(true);
             
-            if (icsResult.exportedCount === 0) {
+            if (icsResult.exportedCount === 0 && icsResult.cancelledCount === 0) {
                 this.showNotification(
                     '⚠️ Aucune mission future à exporter.<br>' +
                     'Toutes vos missions sont dans le passé.',
@@ -1471,6 +1517,10 @@ class NurseSalaryApp {
             
             if (icsResult.skippedPastCount > 0) {
                 message += `ℹ️ ${icsResult.skippedPastCount} mission(s) passée(s) ignorée(s)<br><br>`;
+            }
+
+            if (icsResult.cancelledCount > 0) {
+                message += `❌ ${icsResult.cancelledCount} mission(s) annulée(s) : seront retirées du calendrier au ré-import<br><br>`;
             }
             
             message += `📱 <strong>Sur mobile :</strong> Ouvrir le fichier pour l'ajouter à votre calendrier<br>` +
@@ -1578,11 +1628,67 @@ class NurseSalaryApp {
     /**
      * Affiche une modale
      */
+    /**
+     * Déclenche la sauvegarde d'un formulaire (comme "Enregistrer") depuis la croix.
+     * Le handler de soumission ferme la modale en cas de succès.
+     * Si des champs requis sont vides ou la validation échoue, la modale reste ouverte.
+     */
+    /**
+     * Ouvre ou ferme un accordéon de la modale mission.
+     */
+    /**
+     * Arrondit une valeur à 2 décimales pour l'affichage des tarifs estimés.
+     * Retourne '' si la valeur n'est pas un nombre exploitable.
+     */
+    round2(value) {
+        const n = parseFloat(value);
+        if (!isFinite(n)) return '';
+        return (Math.round(n * 100) / 100).toFixed(2);
+    }
+
+    setAccordionOpen(name, open) {
+        const accordion = document.querySelector(`#mission-form .accordion[data-accordion="${name}"]`);
+        if (accordion) {
+            accordion.classList.toggle('open', open);
+        }
+    }
+
+    /**
+     * Applique l'état par défaut des accordéons selon le statut de la mission.
+     * Tous repliés, sauf "Tarifs estimés" qui se déplie quand la mission est Réalisée.
+     */
+    applyAccordionDefaults(status) {
+        this.setAccordionOpen('horaires', false);
+        this.setAccordionOpen('etablissement', false);
+        this.setAccordionOpen('service', false);
+        this.setAccordionOpen('tarifs', false);
+        this.setAccordionOpen('salaire-reel', status === 'completed');
+    }
+
+    saveAndCloseForm(formId) {
+        const form = document.getElementById(formId);
+        if (!form) return;
+
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+        } else {
+            // Fallback navigateurs anciens
+            form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        }
+    }
+
     showModal(modalId) {
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.classList.add('active');
             document.body.style.overflow = 'hidden';
+
+            // Toujours réinitialiser le défilement en haut à l'ouverture
+            // (un défilement spécifique, ex. vers le Statut, peut être appliqué ensuite)
+            const content = modal.querySelector('.modal-content');
+            if (content) {
+                content.scrollTop = 0;
+            }
         }
     }
 

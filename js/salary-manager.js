@@ -1119,10 +1119,10 @@ class SalaryManager {
         const today = new Date();
         today.setHours(0, 0, 0, 0); // Set to start of day for comparison
         
-        // Filter missions based on date
+        // Filter missions based on date.
+        // Les missions annulées sont conservées : elles seront exportées comme
+        // événements "STATUS:CANCELLED" pour être retirées du calendrier au ré-import.
         const filteredMissions = missions.filter(mission => {
-            if (mission.status === 'cancelled') return false;
-            
             const missionDate = new Date(mission.date + 'T00:00:00');
             return onlyFuture ? missionDate >= today : true;
         });
@@ -1174,13 +1174,12 @@ class SalaryManager {
 
         // Add events
         let exportedCount = 0;
+        let cancelledCount = 0;
         const events = [];
-        
+
         filteredMissions.forEach(mission => {
             const rate = rates.find(r => r.id === mission.rateId);
             if (!rate) return;
-
-            exportedCount++;
 
             // Determine status emoji
             let statusEmoji = '';
@@ -1213,6 +1212,28 @@ class SalaryManager {
             
             const [endH, endM] = endTimeStr.split(':');
             const endTime = `${endH.padStart(2, '0')}${endM.padStart(2, '0')}00`;
+
+            // Mission annulée : émettre un événement d'annulation (même UID que
+            // l'événement déjà exporté) pour qu'un ré-import le supprime du calendrier.
+            if (mission.status === 'cancelled') {
+                const cancelLines = [
+                    'BEGIN:VEVENT',
+                    `UID:${generateUID(mission)}`,
+                    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}`,
+                    `DTSTART;TZID=Europe/Paris:${dateStr}T${startTime}`,
+                    `DTEND;TZID=Europe/Paris:${dateStr}T${endTime}`,
+                    `SUMMARY:❌ ${rate.acronym} - ${mission.establishment || 'Non spécifié'} (Annulée)`,
+                    'SEQUENCE:1',
+                    'STATUS:CANCELLED',
+                    'TRANSP:TRANSPARENT',
+                    'END:VEVENT'
+                ].join('\r\n');
+                events.push(cancelLines);
+                cancelledCount++;
+                return;
+            }
+
+            exportedCount++;
 
             // Build event summary
             const summary = `${statusEmoji}${rate.acronym} - ${mission.establishment || 'Non spécifié'}`;
@@ -1270,6 +1291,7 @@ class SalaryManager {
         return {
             content: icsContent,
             exportedCount: exportedCount,
+            cancelledCount: cancelledCount,
             totalCount: missions.length,
             skippedPastCount: onlyFuture ? missions.filter(m => {
                 const missionDate = new Date(m.date + 'T00:00:00');

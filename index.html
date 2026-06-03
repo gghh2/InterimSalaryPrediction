@@ -35,17 +35,17 @@
         <div class="container">
             <h1><i class="fas fa-user-nurse"></i> Suivi Salaires Infirmier</h1>
             <nav class="main-nav">
-                <button class="nav-btn active" data-section="dashboard">
-                    <i class="fas fa-chart-dashboard"></i> Tableau de bord
+                <button class="nav-btn active" data-section="planning" title="Planning" aria-label="Planning">
+                    <i class="fas fa-calendar"></i>
                 </button>
-                <button class="nav-btn" data-section="rates">
-                    <i class="fas fa-list"></i> Tarifs
+                <button class="nav-btn" data-section="dashboard" title="Tableau de bord" aria-label="Tableau de bord">
+                    <i class="fas fa-chart-line"></i>
                 </button>
-                <button class="nav-btn" data-section="planning">
-                    <i class="fas fa-calendar"></i> Planning
+                <button class="nav-btn" data-section="rates" title="Tarifs" aria-label="Tarifs">
+                    <i class="fas fa-list"></i>
                 </button>
-                <button class="nav-btn" data-section="backup">
-                    <i class="fas fa-download"></i> Sauvegarde
+                <button class="nav-btn" data-section="backup" title="Sauvegarde" aria-label="Sauvegarde">
+                    <i class="fas fa-download"></i>
                 </button>
             </nav>
         </div>
@@ -55,7 +55,7 @@
         <div class="container">
             
             <!-- Section Tableau de bord -->
-            <section id="dashboard" class="app-section active">
+            <section id="dashboard" class="app-section">
                 <div class="recent-missions">
                     <h3>Prochaines missions</h3>
                     <div id="upcoming-missions" class="missions-list">
@@ -140,7 +140,7 @@
             </section>
 
             <!-- Section Planning -->
-            <section id="planning" class="app-section">
+            <section id="planning" class="app-section active">
                 <div class="section-header">
                     <div class="planning-controls">
                         <button class="btn btn-primary" id="add-mission-btn">
@@ -347,8 +347,7 @@
                     <small style="color: #6c757d; font-size: 0.8rem;">Cocher pour exclure ce type de mission du comptage des heures et missions (le salaire sera toujours compté)</small>
                 </div>
                 <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" id="cancel-rate">Annuler</button>
-                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
                 </div>
             </form>
         </div>
@@ -374,88 +373,118 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <h4 style="margin-bottom: 0.5rem; color: var(--primary-color);">Horaires de la mission</h4>
-                    <small style="color: #6c757d; font-size: 0.8rem; display: block; margin-bottom: 0.5rem;">
-                        Pré-remplis depuis le tarif, modifiables pour cette mission
-                    </small>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div>
-                            <label for="mission-start-time">Heure de début</label>
-                            <input type="time" id="mission-start-time" placeholder="08:00">
-                        </div>
-                        <div>
-                            <label for="mission-end-time">Heure de fin</label>
-                            <input type="time" id="mission-end-time" placeholder="15:00">
+                    <label for="mission-status">Statut</label>
+                    <select id="mission-status" required>
+                        <option value="planned">📅 Planifiée</option>
+                        <option value="confirmed">🟢 Confirmée</option>
+                        <option value="completed">✅ Réalisée</option>
+                        <option value="cancelled">❌ Annulée</option>
+                    </select>
+                </div>
+
+                <!-- Accordéon: Horaires de la mission -->
+                <div class="accordion" data-accordion="horaires">
+                    <button type="button" class="accordion-header">
+                        <span><i class="fas fa-clock"></i> Horaires de la mission</span>
+                        <i class="fas fa-chevron-down accordion-chevron"></i>
+                    </button>
+                    <div class="accordion-body">
+                        <small style="color: #6c757d; font-size: 0.8rem; display: block; margin-bottom: 0.5rem;">
+                            Pré-remplis depuis le tarif, modifiables pour cette mission
+                        </small>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div>
+                                <label for="mission-start-time">Heure de début</label>
+                                <input type="time" id="mission-start-time" placeholder="08:00">
+                            </div>
+                            <div>
+                                <label for="mission-end-time">Heure de fin</label>
+                                <input type="time" id="mission-end-time" placeholder="15:00">
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="mission-establishment">Établissement</label>
-                    <input type="text" id="mission-establishment" placeholder="Ex: Clinique de Cesson Sévigné" list="mission-establishments-list">
-                    <datalist id="mission-establishments-list">
-                        <!-- Les établissements seront ajoutés dynamiquement -->
-                    </datalist>
+
+                <!-- Accordéon: Établissement -->
+                <div class="accordion" data-accordion="etablissement">
+                    <button type="button" class="accordion-header">
+                        <span><i class="fas fa-building"></i> Établissement</span>
+                        <i class="fas fa-chevron-down accordion-chevron"></i>
+                    </button>
+                    <div class="accordion-body">
+                        <input type="text" id="mission-establishment" placeholder="Ex: Clinique de Cesson Sévigné" list="mission-establishments-list">
+                        <datalist id="mission-establishments-list">
+                            <!-- Les établissements seront ajoutés dynamiquement -->
+                        </datalist>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="mission-service">Service</label>
-                    <input type="text" id="mission-service" placeholder="Ex: Urgences">
+
+                <!-- Accordéon: Service -->
+                <div class="accordion" data-accordion="service">
+                    <button type="button" class="accordion-header">
+                        <span><i class="fas fa-stethoscope"></i> Service</span>
+                        <i class="fas fa-chevron-down accordion-chevron"></i>
+                    </button>
+                    <div class="accordion-body">
+                        <input type="text" id="mission-service" placeholder="Ex: Urgences">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="mission-status">Statut</label>
-                    <select id="mission-status" required>
-                        <option value="planned">Planifiée</option>
-                        <option value="confirmed">Confirmée</option>
-                        <option value="completed">Réalisée</option>
-                        <option value="cancelled">Annulée</option>
-                    </select>
+
+                <!-- Accordéon: Tarifs estimés -->
+                <div class="accordion" data-accordion="tarifs">
+                    <button type="button" class="accordion-header">
+                        <span><i class="fas fa-euro-sign"></i> Tarifs estimés</span>
+                        <i class="fas fa-chevron-down accordion-chevron"></i>
+                    </button>
+                    <div class="accordion-body">
+                        <small style="color: #6c757d; font-size: 0.8rem; display: block; margin-bottom: 0.75rem;">
+                            Depuis la page Tarifs, ajustables pour cette mission
+                        </small>
+                        <div class="form-group">
+                            <label for="mission-hourly-rate">Tarif horaire net (€/h)</label>
+                            <input type="number" id="mission-hourly-rate" step="0.01" placeholder="Ex: 14.62">
+                        </div>
+                        <div class="form-group">
+                            <label for="mission-estimated-salary">Salaire estimé net (€)</label>
+                            <input type="number" id="mission-estimated-salary" step="0.01" placeholder="Ex: 102.33">
+                        </div>
+                    </div>
                 </div>
+                
+                <!-- Accordéon: Salaire réel -->
+                <div class="accordion" data-accordion="salaire-reel">
+                    <button type="button" class="accordion-header">
+                        <span><i class="fas fa-money-bill-wave"></i> Salaire réel</span>
+                        <i class="fas fa-chevron-down accordion-chevron"></i>
+                    </button>
+                    <div class="accordion-body">
+                        <small style="color: #6c757d; font-size: 0.8rem; display: block; margin-bottom: 0.75rem;">
+                            À renseigner en fin de mois
+                        </small>
+                        <div class="form-group">
+                            <label for="mission-real-gross">Salaire brut réel (€)</label>
+                            <input type="number" id="mission-real-gross" step="0.01" placeholder="Optionnel - Ex: 150.75">
+                            <small style="color: #6c757d; font-size: 0.8rem;">Montant brut effectivement perçu</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="mission-real-net">Salaire net réel (€)</label>
+                            <input type="number" id="mission-real-net" step="0.01" placeholder="Optionnel - Ex: 123.45">
+                            <small style="color: #6c757d; font-size: 0.8rem;">Montant net effectivement perçu</small>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="mission-notes">Notes</label>
                     <textarea id="mission-notes" placeholder="Notes optionnelles..."></textarea>
                 </div>
-                
-                <div class="form-group">
-                    <h4 style="margin-bottom: 1rem; color: var(--primary-color); border-bottom: 1px solid var(--medium-gray); padding-bottom: 0.5rem;">
-                        Tarifs estimés (depuis la page Tarifs, ajustables)
-                    </h4>
-                </div>
-                
-                <div class="form-group">
-                    <label for="mission-hourly-rate">Tarif horaire net (€/h)</label>
-                    <input type="number" id="mission-hourly-rate" step="0.001" placeholder="Ex: 14.620">
-                    <small style="color: #6c757d; font-size: 0.8rem;">Pré-rempli depuis le tarif, modifiable pour cette mission</small>
-                </div>
-                
-                <div class="form-group">
-                    <label for="mission-estimated-salary">Salaire estimé net (€)</label>
-                    <input type="number" id="mission-estimated-salary" step="0.001" placeholder="Ex: 102.330">
-                    <small style="color: #6c757d; font-size: 0.8rem;">Pré-rempli depuis le tarif, modifiable pour cette mission</small>
-                </div>
-                
-                <div class="form-group">
-                    <h4 style="margin-bottom: 1rem; color: var(--primary-color); border-bottom: 1px solid var(--medium-gray); padding-bottom: 0.5rem;">
-                        Salaire réel (à renseigner en fin de mois)
-                    </h4>
-                </div>
-                
-                <div class="form-group">
-                    <label for="mission-real-gross">Salaire brut réel (€)</label>
-                    <input type="number" id="mission-real-gross" step="0.01" placeholder="Optionnel - Ex: 150.75">
-                    <small style="color: #6c757d; font-size: 0.8rem;">Montant brut effectivement perçu</small>
-                </div>
-                
-                <div class="form-group">
-                    <label for="mission-real-net">Salaire net réel (€)</label>
-                    <input type="number" id="mission-real-net" step="0.01" placeholder="Optionnel - Ex: 123.45">
-                    <small style="color: #6c757d; font-size: 0.8rem;">Montant net effectivement perçu</small>
-                </div>
+
                 <div class="form-actions">
                     <button type="button" class="btn btn-danger" id="delete-mission" style="display: none;">
                         <i class="fas fa-trash"></i> Supprimer
                     </button>
                     <div style="flex: 1;"></div>
-                    <button type="button" class="btn btn-secondary" id="cancel-mission">Annuler</button>
-                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
                 </div>
             </form>
         </div>
